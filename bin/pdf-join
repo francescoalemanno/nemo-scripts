@@ -1,0 +1,38 @@
+#!/usr/bin/env python3
+"""Unisce i PDF selezionati da Nemo, nell'ordine scelto trascinando le righe."""
+
+import os
+import shutil
+import subprocess
+import sys
+
+sys.dont_write_bytecode = True
+import merge_dialog  # noqa: E402
+
+
+def check_selection(files: list[str]) -> str | None:
+    if len(files) < 2:
+        return "Seleziona almeno due PDF da unire."
+    for path in files:
+        if not os.path.isfile(path) or not path.lower().endswith(".pdf"):
+            return f"Selezione non valida: '{path}' non è un PDF."
+    if shutil.which("pdfunite") is None:
+        return "Manca il programma richiesto: pdfunite (poppler-utils)."
+    return None
+
+
+def create(paths: list[str], output: str) -> None:
+    process = subprocess.run(["pdfunite", *paths, output], capture_output=True, text=True)
+    if process.returncode != 0:
+        detail = "\n".join((process.stderr or process.stdout).strip().splitlines()[-20:])
+        raise RuntimeError("Impossibile unire i PDF." + (f"\n\n{detail}" if detail else ""))
+
+
+merge_dialog.run(
+    title="PDF join",
+    files=[os.path.abspath(path) for path in sys.argv[1:] if path],
+    list_label="Ordine dei PDF",
+    default_name="uniti",
+    check_selection=check_selection,
+    create=create,
+)

@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR=$(dirname -- "$(readlink -f -- "$0")")
+# shellcheck source=lib.sh
+source "$SCRIPT_DIR/lib.sh"
+require_command gs
+require_command zenity
+load_selection "$@"
+check_extensions PDF '\.[pP][dD][fF]$'
+
+target_kb=$(zenity --entry --title="Riduci PDF a una dimensione" \
+    --text="Dimensione massima per ciascun PDF (KB; 1 KB = 1024 byte):" \
+    --entry-text="500" 2>/dev/null) || exit 0
+if [[ ! $target_kb =~ ^[1-9][0-9]{0,8}$ ]]; then
+    notify_error "Inserisci un numero intero di KB maggiore di zero (massimo 999.999.999)."
+    exit 1
+fi
+target_bytes=$((target_kb * 1024))
+
+declare -a destinations=() workdirs=()
+declare -A seen=()
+for file in "${files[@]}"; do
+    name=$(basename -- "$file")
+    stem=${name%.*}
+    file_dir=$(dirname -- "$file")
+    destination="$file_dir/${stem}-ridotto.pdf"
+    if [[ -n ${seen[$destination]+x} ]]; then
+        notify_error $'Due file selezionati produrrebbero lo stesso nome:\n'"$destination"
+        exit 1
+    fi
+    seen[$destination]=1
+    if [[ -e $destination ]]; then
+        notify_error $'Il file esiste già e non verrà sovrascritto:\n'"$destination"
+        exit 1
+    fi
+    destinations+=("$destination")
+done
+
+trap 'for workdir in "${workdirs[@]}"; do rm -rf -- "$workdir"; done' EXIT
+# Si prova prima con qualità alta e si scende progressivamente finché il PDF
+# rientra nel limite. La dimensione richiesta è un massimo, non un valore esatto.
+resolutions=(300 240 200 170 150 130 110 96 85 72 60 48 36 24)
+qualities=(90 88 86 84 82 80 77 74 70 65 60 50 40 30)
+declare -a chosen_files=() chosen_sizes=() target_met=()
+
+for i in "${!files[@]}"; do
+    workdir=$(mktemp -d "$(dirname -- "${destinations[$i]}")/.pdf-reduce.XXXXXX")
+    workdirs+=("$workdir")
+    best_file="$workdir/best-$i.pdf"
+    original_size=$(stat -c '%s' -- "${files[$i]}")
+    if (( original_size <= target_bytes )); then
+        cp -- "${files[$i]}" "$best_file"
+        chosen_files+=("$best_file")
+        chosen_sizes+=("$original_size")
+        target_met+=(1)
+        continue
+    fi
+    best_size=0
+    met_target=0
+    for j in "${!resolutions[@]}"; do
+        candidate="$workdir/candidate-$i-$j.pdf"
+        dpi=${resolutions[$j]}
+        quality=${qualities[$j]}
+        if ! gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 \
+            -dDetectDuplicateImages=true -dCompressFonts=true -dSubsetFonts=true \
+            -dDownsampleColorImages=true -dColorImageDownsampleType=/Bicubic \
+            -dColorImageDownsampleThreshold=1.0 "-dColorImageResolution=$dpi" \
+            -dDownsampleGrayImages=true -dGrayImageDownsampleType=/Bicubic \
+            -dGrayImageDownsampleThreshold=1.0 "-dGrayImageResolution=$dpi" \
+            -dDownsampleMonoImages=true -dMonoImageDownsampleType=/Subsample \
+            -dMonoImageDownsampleThreshold=1.0 "-dMonoImageResolution=$dpi" \
+            -dAutoFilterColorImages=false -dColorImageFilter=/DCTEncode \
+            -dAutoFilterGrayImages=false -dGrayImageFilter=/DCTEncode "-dJPEGQ=$quality" \
+            -dNOPAUSE -dBATCH -dQUIET -dSAFER \
+            "-sOutputFile=$candidate" "${files[$i]}" >"$workdir/log" 2>&1; then
+            show_command_error "$workdir/log" "Riduzione non riuscita per: $(basename -- "${files[$i]}")"
+            exit 1
+        fi
+        if [[ ! -s $candidate ]]; then
+            notify_error "Ghostscript non ha prodotto un PDF valido per: $(basename -- "${files[$i]}")"
+            exit 1
+        fi
+        size=$(stat -c '%s' -- "$candidate")
+        if (( size <= target_bytes )); then
+            cp -- "$candidate" "$best_file"
+            best_size=$size
+            met_target=1
+            break
+        fi
+        if (( best_size == 0 || size < best_size )); then
+            cp -- "$candidate" "$best_file"
+            best_size=$size
+        fi
+    done
+    chosen_files+=("$best_file")
+    chosen_sizes+=("$best_size")
+    target_met+=("$met_target")
+done
+
+# Pubblica i risultati solo dopo aver completato la compressione di tutti i file.
+for i in "${!chosen_files[@]}"; do
+    mv -- "${chosen_files[$i]}" "${destinations[$i]}"
+done
+
+summary=""
+all_met=1
+for i in "${!destinations[@]}"; do
+    size_kb=$(awk -v bytes="${chosen_sizes[$i]}" 'BEGIN { printf "%.1f", bytes / 1024 }')
+    summary+=$'\n'"$(basename -- "${destinations[$i]}"): ${size_kb} KB"
+    if (( target_met[i] == 0 )); then
+        all_met=0
+        summary+=" (limite non raggiunto)"
+    fi
+done
+if (( all_met )); then
+    notify_info "Compressione completata: tutti i PDF rispettano il limite di ${target_kb} KB.${summary}"
+else
+    notify_warning "Ho salvato la versione più piccola ottenuta, ma alcuni PDF non possono rientrare nel limite richiesto di ${target_kb} KB con questa compressione.${summary}"
+fi

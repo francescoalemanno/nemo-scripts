@@ -1,0 +1,7 @@
+[Nemo Action]
+Name=Apri Ghostty in questa cartella
+Comment=Apre Ghostty nella cartella selezionata
+Exec=/usr/bin/ghostty --working-directory=%F
+Selection=s
+Extensions=dir;
+Icon-Name=utilities-terminal

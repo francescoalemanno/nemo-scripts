@@ -1,0 +1,7 @@
+[Nemo Action]
+Name=IMG 2 PDF
+Comment=Crea un PDF multipagina dalle immagini selezionate
+Exec=<nemo-scripts/img-2-pdf %F>
+Selection=notnone
+Extensions=jpg;jpeg;png;gif;bmp;tif;tiff;webp;
+Icon-Name=application-pdf

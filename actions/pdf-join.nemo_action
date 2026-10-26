@@ -1,0 +1,7 @@
+[Nemo Action]
+Name=PDF join
+Comment=Unisce i PDF selezionati in un unico documento
+Exec=<nemo-scripts/pdf-join %F>
+Selection=m
+Extensions=pdf;
+Icon-Name=application-pdf

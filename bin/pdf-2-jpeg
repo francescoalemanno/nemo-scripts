@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR=$(dirname -- "$(readlink -f -- "$0")")
+# shellcheck source=lib.sh
+source "$SCRIPT_DIR/lib.sh"
+require_command pdftoppm
+require_command zenity
+load_selection "$@"
+check_extensions PDF '\.[pP][dD][fF]$'
+
+outdir=$(choose_output_directory "$(selected_directory)") || exit 0
+[[ -d $outdir ]] || { notify_error "La cartella di destinazione non esiste."; exit 1; }
+tmpdir=$(mktemp -d "$outdir/.pdf-jpeg.XXXXXX")
+trap 'rm -rf -- "$tmpdir"' EXIT
+
+declare -a generated=() destinations=()
+for i in "${!files[@]}"; do
+    file=${files[$i]}
+    base=$(basename -- "$file")
+    base=${base%.*}
+    prefix="$tmpdir/${i}-${base}"
+    if ! pdftoppm -jpeg -r 150 "$file" "$prefix" >"$tmpdir/log" 2>&1; then
+        show_command_error "$tmpdir/log" "Conversione non riuscita per: $base"
+        exit 1
+    fi
+    shopt -s nullglob
+    pages=("${prefix}"-*.jpg)
+    shopt -u nullglob
+    if ((${#pages[@]} == 0)); then
+        notify_error "Nessuna pagina convertita per: $base"
+        exit 1
+    fi
+    for page in "${pages[@]}"; do
+        suffix=${page#"$prefix"}
+        destination="$outdir/$base$suffix"
+        if [[ -e $destination ]]; then
+            notify_error $'Il file esiste già e non verrà sovrascritto:\n'"$destination"
+            exit 1
+        fi
+        generated+=("$page")
+        destinations+=("$destination")
+    done
+done
+for i in "${!generated[@]}"; do
+    mv -- "${generated[$i]}" "${destinations[$i]}"
+done
+notify_info $'Conversione completata: '"${#generated[@]}"$' immagini JPEG salvate in\n'"$outdir"

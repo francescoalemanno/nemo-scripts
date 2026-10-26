@@ -1,0 +1,187 @@
+#!/usr/bin/env python3
+"""Rinomina in blocco i file selezionati da Nemo, con anteprima interattiva."""
+
+import os
+import sys
+import tempfile
+import tkinter as tk
+from tkinter import ttk
+
+files = [os.path.abspath(path) for path in sys.argv[1:] if path]
+selection_root = os.path.commonpath([os.path.dirname(path) for path in files]) if files else os.getcwd()
+
+
+def display_path(path: str) -> str:
+    return os.path.relpath(path, selection_root)
+
+
+def target_for(path: str, prefix: str, number: int) -> str:
+    directory, filename = os.path.split(path)
+    _, extension = os.path.splitext(filename)
+    return os.path.join(directory, f"{prefix}{number}{extension}")
+
+
+def rename_transaction(targets: list[str]) -> None:
+    selected = set(files)
+    for source, target in zip(files, targets):
+        if os.path.lexists(target) and target not in selected:
+            raise FileExistsError(f"Esiste già: {target}")
+
+    staged = []
+    try:
+        for source, target in zip(files, targets):
+            directory = os.path.dirname(source)
+            stage_dir = tempfile.mkdtemp(prefix=".bulk-rename.", dir=directory)
+            stage_path = os.path.join(stage_dir, "item")
+            record = {
+                "source": source,
+                "target": target,
+                "stage_dir": stage_dir,
+                "stage_path": stage_path,
+                "is_staged": False,
+                "is_final": False,
+            }
+            staged.append(record)
+            os.rename(source, stage_path)
+            record["is_staged"] = True
+
+        for record in staged:
+            os.rename(record["stage_path"], record["target"])
+            record["is_staged"] = False
+            record["is_final"] = True
+    except Exception:
+        # Riporta prima i nomi finali nelle aree temporanee, poi ripristina gli originali.
+        for record in reversed(staged):
+            if record["is_final"]:
+                try:
+                    os.rename(record["target"], record["stage_path"])
+                    record["is_final"] = False
+                    record["is_staged"] = True
+                except OSError:
+                    pass
+        for record in reversed(staged):
+            if record["is_staged"]:
+                try:
+                    os.rename(record["stage_path"], record["source"])
+                    record["is_staged"] = False
+                except OSError:
+                    pass
+            try:
+                os.rmdir(record["stage_dir"])
+            except OSError:
+                pass
+        raise
+
+    for record in staged:
+        try:
+            os.rmdir(record["stage_dir"])
+        except OSError:
+            pass
+
+
+root = tk.Tk()
+root.title("Bulk rename")
+root.minsize(680, 400)
+root.geometry("900x540")
+root.columnconfigure(0, weight=1)
+root.rowconfigure(0, weight=1)
+
+main = ttk.Frame(root, padding=12)
+main.grid(row=0, column=0, sticky="nsew")
+main.columnconfigure(0, weight=1)
+main.rowconfigure(2, weight=1)
+
+ttk.Label(main, text="Stringa iniziale").grid(row=0, column=0, sticky="w")
+prefix_var = tk.StringVar()
+entry = ttk.Entry(main, textvariable=prefix_var)
+entry.grid(row=1, column=0, sticky="ew", pady=(4, 12))
+
+preview_frame = ttk.LabelFrame(main, text="Anteprima", padding=6)
+preview_frame.grid(row=2, column=0, sticky="nsew")
+preview_frame.columnconfigure(0, weight=1)
+preview_frame.rowconfigure(0, weight=1)
+
+columns = ("original", "destination")
+tree = ttk.Treeview(preview_frame, columns=columns, show="headings", selectmode="none")
+tree.heading("original", text="Percorso relativo attuale")
+tree.heading("destination", text="Nuovo percorso relativo")
+tree.column("original", width=380, anchor="w")
+tree.column("destination", width=380, anchor="w")
+scroll_y = ttk.Scrollbar(preview_frame, orient="vertical", command=tree.yview)
+scroll_x = ttk.Scrollbar(preview_frame, orient="horizontal", command=tree.xview)
+tree.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
+tree.grid(row=0, column=0, sticky="nsew")
+scroll_y.grid(row=0, column=1, sticky="ns")
+scroll_x.grid(row=1, column=0, sticky="ew")
+
+status_var = tk.StringVar()
+status = ttk.Label(main, textvariable=status_var, wraplength=850)
+status.grid(row=3, column=0, sticky="w", pady=(10, 0))
+
+buttons = ttk.Frame(main)
+buttons.grid(row=4, column=0, sticky="e", pady=(12, 0))
+rename_button = ttk.Button(buttons, text="Rinomina", state="disabled")
+rename_button.pack(side="right", padx=(8, 0))
+cancel_button = ttk.Button(buttons, text="Annulla", command=root.destroy)
+cancel_button.pack(side="right")
+
+current_targets = []
+
+
+def update_preview(*_args) -> None:
+    global current_targets
+    tree.delete(*tree.get_children())
+    prefix = prefix_var.get()
+    current_targets = []
+
+    if not files:
+        status_var.set("Nessun file selezionato in Nemo.")
+        rename_button.configure(state="disabled")
+        return
+    invalid = [path for path in files if not os.path.isfile(path)]
+    if invalid:
+        status_var.set(f"Selezione non valida: non è un file regolare — {display_path(invalid[0])}")
+        rename_button.configure(state="disabled")
+        return
+    if not prefix or "/" in prefix or "\n" in prefix or "\r" in prefix:
+        status_var.set("Inserisci una stringa non vuota, senza '/' o ritorni a capo.")
+        rename_button.configure(state="disabled")
+        return
+
+    current_targets = [target_for(path, prefix, i) for i, path in enumerate(files, start=1)]
+    selected = set(files)
+    seen = set()
+    conflict = None
+    for source, target in zip(files, current_targets):
+        tree.insert("", "end", values=(display_path(source), display_path(target)))
+        if target in seen:
+            conflict = f"Destinazione duplicata: {display_path(target)}"
+            break
+        seen.add(target)
+        if os.path.lexists(target) and target not in selected:
+            conflict = f"Esiste già un elemento con questo nome: {display_path(target)}"
+            break
+
+    if conflict:
+        status_var.set(conflict)
+        rename_button.configure(state="disabled")
+    else:
+        status_var.set(f"{len(files)} file — pattern: {prefix}{{progressivo}}.{{estensione}} (numerazione da 1)")
+        rename_button.configure(text=f"Rinomina {len(files)} file", state="normal")
+
+
+def confirm_rename() -> None:
+    try:
+        rename_transaction(current_targets)
+    except Exception:
+        update_preview()
+        status_var.set("Rinomina non riuscita; è stato tentato il ripristino dei nomi originali.")
+        return
+    root.destroy()
+
+
+rename_button.configure(command=confirm_rename)
+prefix_var.trace_add("write", update_preview)
+update_preview()
+entry.focus_set()
+root.mainloop()

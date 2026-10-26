@@ -1,0 +1,7 @@
+[Nemo Action]
+Name=PDF reduce
+Comment=Comprime i PDF selezionati entro una dimensione massima in KB
+Exec=<nemo-scripts/pdf-reduce %F>
+Selection=notnone
+Extensions=pdf;
+Icon-Name=package-x-generic

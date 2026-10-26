@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+"""Crea un PDF multipagina dalle immagini selezionate in Nemo, nell'ordine scelto trascinando le righe."""
+
+import os
+import re
+import sys
+
+sys.dont_write_bytecode = True
+import merge_dialog  # noqa: E402
+
+IMAGE_PATTERN = re.compile(r"\.(jpe?g|png|gif|bmp|tiff?|webp)$", re.IGNORECASE)
+
+
+def check_selection(files: list[str]) -> str | None:
+    if not files:
+        return "Seleziona prima una o più immagini in Nemo."
+    for path in files:
+        if not os.path.isfile(path) or not IMAGE_PATTERN.search(path):
+            return f"Selezione non valida: '{path}' non è un'immagine."
+    try:
+        import PIL  # noqa: F401
+    except ImportError:
+        return "Per creare il PDF serve Pillow per Python 3 (modulo PIL)."
+    return None
+
+
+def thumbnail(path: str, size: int):
+    from PIL import Image, ImageOps, ImageTk
+
+    with Image.open(path) as source:
+        # draft() velocizza la lettura dei JPEG grandi decodificandoli già ridotti.
+        source.draft("RGB", (size * 2, size * 2))
+        image = ImageOps.exif_transpose(source)
+        image.thumbnail((size, size))
+        return ImageTk.PhotoImage(image)
+
+
+def create(paths: list[str], output: str) -> None:
+    from PIL import Image, ImageOps
+
+    images = []
+    try:
+        for path in paths:
+            try:
+                with Image.open(path) as source:
+                    images.append(ImageOps.exif_transpose(source).convert("RGB"))
+            except OSError as exc:
+                raise RuntimeError(f"Impossibile leggere l'immagine:\n{path}\n\n{exc}") from exc
+        images[0].save(output, "PDF", save_all=True, append_images=images[1:], resolution=150.0)
+    finally:
+        for image in images:
+            image.close()
+
+
+files = [os.path.abspath(path) for path in sys.argv[1:] if path]
+merge_dialog.run(
+    title="IMG 2 PDF",
+    files=files,
+    list_label="Ordine delle pagine",
+    default_name=os.path.splitext(os.path.basename(files[0]))[0] if files else "immagini",
+    check_selection=check_selection,
+    create=create,
+    thumbnail=thumbnail,
+)

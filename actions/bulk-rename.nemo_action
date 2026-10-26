@@ -1,0 +1,7 @@
+[Nemo Action]
+Name=Bulk rename
+Comment=Rinomina in blocco i file selezionati con un progressivo
+Exec=<nemo-scripts/bulk-rename %F>
+Selection=notnone
+Extensions=nodirs;
+Icon-Name=edit-rename
