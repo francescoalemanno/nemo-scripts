@@ -66,3 +66,7 @@ Su Debian/Ubuntu, se necessario:
 ```bash
 sudo apt install zenity poppler-utils ghostscript python3-pil python3-pil.imagetk python3-tk
 ```
+
+## Licenza
+
+MIT — vedi [LICENSE](LICENSE).
