@@ -1,0 +1,350 @@
+#!/usr/bin/env python3
+"""Converte le pagine dei PDF selezionati in Nemo in immagini JPEG o PNG."""
+
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+sys.dont_write_bytecode = True
+from nemo_common import (Cancelled, Worker, check_pdfs, choose_directory, publish,  # noqa: E402
+                         relative_names, selected_files)
+import tkinter as tk  # noqa: E402
+from tkinter import messagebox, ttk  # noqa: E402
+
+TITLE = "PDF 2 IMG"
+
+
+def page_count(path: str) -> int | None:
+    try:
+        process = subprocess.run(["pdfinfo", path], capture_output=True, text=True, errors="replace", timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    for line in process.stdout.splitlines():
+        if line.startswith("Pages:"):
+            return int(line.split()[1])
+    return None
+
+
+files = selected_files()
+names = relative_names(files)
+
+root = tk.Tk()
+root.title(TITLE)
+root.minsize(620, 480)
+root.geometry("800x560")
+root.columnconfigure(0, weight=1)
+root.rowconfigure(0, weight=1)
+
+error = check_pdfs(files)
+for program in ("pdftoppm", "pdfinfo"):
+    if not error and shutil.which(program) is None:
+        error = f"Manca il programma richiesto: {program} (poppler-utils)."
+if error:
+    root.withdraw()
+    messagebox.showerror(TITLE, error, parent=root)
+    root.destroy()
+    sys.exit(1)
+
+pages = [page_count(path) for path in files]
+
+main = ttk.Frame(root, padding=12)
+main.grid(row=0, column=0, sticky="nsew")
+main.columnconfigure(0, weight=1)
+main.rowconfigure(0, weight=1)
+
+list_frame = ttk.LabelFrame(main, text="PDF selezionati", padding=6)
+list_frame.grid(row=0, column=0, sticky="nsew")
+list_frame.columnconfigure(0, weight=1)
+list_frame.rowconfigure(0, weight=1)
+tree = ttk.Treeview(list_frame, columns=("name", "pages", "result"), show="headings", selectmode="none", height=5)
+tree.heading("name", text="Percorso relativo")
+tree.heading("pages", text="Pagine")
+tree.heading("result", text="Risultato")
+tree.column("name", width=420, anchor="w")
+tree.column("pages", width=70, stretch=False, anchor="e")
+tree.column("result", width=220, anchor="w")
+scroll_y = ttk.Scrollbar(list_frame, orient="vertical", command=tree.yview)
+tree.configure(yscrollcommand=scroll_y.set)
+tree.grid(row=0, column=0, sticky="nsew")
+scroll_y.grid(row=0, column=1, sticky="ns")
+for index, name in enumerate(names):
+    tree.insert("", "end", iid=str(index), values=(name, pages[index] if pages[index] else "?", ""))
+
+options = ttk.LabelFrame(main, text="Immagini", padding=8)
+options.grid(row=1, column=0, sticky="ew", pady=(12, 0))
+options.columnconfigure(1, weight=1)
+format_var = tk.StringVar(value="jpeg")
+dpi_var = tk.StringVar(value="150")
+quality_var = tk.IntVar(value=90)
+range_var = tk.StringVar(value="all")
+first_var = tk.StringVar(value="1")
+last_var = tk.StringVar(value=str(max([count for count in pages if count] or [1])))
+outdir_var = tk.StringVar(value=os.path.dirname(files[0]))
+
+ttk.Label(options, text="Formato").grid(row=0, column=0, sticky="w")
+format_frame = ttk.Frame(options)
+format_frame.grid(row=0, column=1, sticky="w", padx=(8, 0))
+jpeg_radio = ttk.Radiobutton(format_frame, text="JPEG", variable=format_var, value="jpeg")
+jpeg_radio.pack(side="left")
+png_radio = ttk.Radiobutton(format_frame, text="PNG (senza perdita, file più grandi)", variable=format_var, value="png")
+png_radio.pack(side="left", padx=(12, 0))
+
+ttk.Label(options, text="Risoluzione").grid(row=1, column=0, sticky="w", pady=(6, 0))
+dpi_frame = ttk.Frame(options)
+dpi_frame.grid(row=1, column=1, sticky="w", padx=(8, 0), pady=(6, 0))
+dpi_entry = ttk.Spinbox(dpi_frame, from_=36, to=1200, increment=10, width=6, textvariable=dpi_var)
+dpi_entry.pack(side="left")
+ttk.Label(dpi_frame, text="dpi  (72 schermo · 150 uso generale · 300 stampa)").pack(side="left", padx=(4, 0))
+
+ttk.Label(options, text="Qualità JPEG").grid(row=2, column=0, sticky="w", pady=(6, 0))
+quality_frame = ttk.Frame(options)
+quality_frame.grid(row=2, column=1, sticky="w", padx=(8, 0), pady=(6, 0))
+quality_scale = ttk.Scale(quality_frame, from_=10, to=100, length=200,
+                          command=lambda value: quality_var.set(round(float(value))))
+quality_scale.set(quality_var.get())
+quality_scale.pack(side="left")
+ttk.Label(quality_frame, textvariable=quality_var, width=4).pack(side="left", padx=(6, 0))
+
+ttk.Label(options, text="Pagine").grid(row=3, column=0, sticky="w", pady=(6, 0))
+range_frame = ttk.Frame(options)
+range_frame.grid(row=3, column=1, sticky="w", padx=(8, 0), pady=(6, 0))
+all_radio = ttk.Radiobutton(range_frame, text="Tutte", variable=range_var, value="all")
+all_radio.pack(side="left")
+some_radio = ttk.Radiobutton(range_frame, text="Da", variable=range_var, value="range")
+some_radio.pack(side="left", padx=(12, 4))
+first_entry = ttk.Spinbox(range_frame, from_=1, to=100_000, width=5, textvariable=first_var)
+first_entry.pack(side="left")
+ttk.Label(range_frame, text="a").pack(side="left", padx=4)
+last_entry = ttk.Spinbox(range_frame, from_=1, to=100_000, width=5, textvariable=last_var)
+last_entry.pack(side="left")
+
+ttk.Label(options, text="Cartella").grid(row=4, column=0, sticky="w", pady=(6, 0))
+outdir_frame = ttk.Frame(options)
+outdir_frame.grid(row=4, column=1, sticky="ew", padx=(8, 0), pady=(6, 0))
+outdir_frame.columnconfigure(0, weight=1)
+outdir_entry = ttk.Entry(outdir_frame, textvariable=outdir_var)
+outdir_entry.grid(row=0, column=0, sticky="ew")
+browse_button = ttk.Button(outdir_frame, text="Scegli…")
+browse_button.grid(row=0, column=1, padx=(6, 0))
+
+status_var = tk.StringVar()
+ttk.Label(main, textvariable=status_var, wraplength=760).grid(row=2, column=0, sticky="w", pady=(10, 0))
+progress = ttk.Progressbar(main, mode="determinate")
+progress.grid(row=3, column=0, sticky="ew", pady=(6, 0))
+
+buttons = ttk.Frame(main)
+buttons.grid(row=4, column=0, sticky="e", pady=(12, 0))
+start_button = ttk.Button(buttons, text="Converti")
+start_button.pack(side="right", padx=(8, 0))
+close_button = ttk.Button(buttons, text="Chiudi")
+close_button.pack(side="right")
+open_button = ttk.Button(buttons, text="Apri cartella")
+
+controls = [jpeg_radio, png_radio, dpi_entry, quality_scale, all_radio, some_radio,
+            first_entry, last_entry, outdir_entry, browse_button]
+worker = None
+finished = False
+
+
+def read_int(variable: tk.StringVar, low: int, high: int) -> int | None:
+    text = variable.get().strip()
+    if not text.isdigit():
+        return None
+    value = int(text)
+    return value if low <= value <= high else None
+
+
+def settings() -> tuple[dict | None, str]:
+    """Restituisce le impostazioni valide oppure (None, motivo)."""
+    dpi = read_int(dpi_var, 36, 1200)
+    if dpi is None:
+        return None, "Inserisci una risoluzione tra 36 e 1200 dpi."
+    outdir = os.path.expanduser(outdir_var.get().strip())
+    if not os.path.isdir(outdir):
+        return None, "La cartella di destinazione non esiste."
+    if not os.access(outdir, os.W_OK):
+        return None, "Non hai i permessi per scrivere nella cartella di destinazione."
+    first = last = None
+    if range_var.get() == "range":
+        first, last = read_int(first_var, 1, 100_000), read_int(last_var, 1, 100_000)
+        if first is None or last is None or first > last:
+            return None, "Inserisci un intervallo di pagine valido (da ≤ a)."
+    config = {"format": format_var.get(), "dpi": dpi, "quality": quality_var.get(),
+              "first": first, "last": last, "outdir": outdir}
+    kind = "PNG" if config["format"] == "png" else f"JPEG qualità {config['quality']}"
+    pages_text = "tutte le pagine" if first is None else f"pagine {first}–{last}"
+    return config, f"{kind} a {dpi} dpi, {pages_text}, in {outdir}"
+
+
+def update_state(*_args) -> None:
+    if worker and worker.running() or finished:
+        return
+    quality_scale.state(["!disabled"] if format_var.get() == "jpeg" else ["disabled"])
+    ranged = range_var.get() == "range"
+    first_entry.configure(state="normal" if ranged else "disabled")
+    last_entry.configure(state="normal" if ranged else "disabled")
+    config, message = settings()
+    status_var.set(message)
+    start_button.configure(state="normal" if config else "disabled")
+
+
+def convert(job: Worker, config: dict) -> None:
+    extension = "png" if config["format"] == "png" else "jpg"
+    if config["format"] == "png":
+        options = ["-png"]
+    else:
+        options = ["-jpeg", "-jpegopt", f"quality={config['quality']}"]
+    workdir = tempfile.mkdtemp(prefix=".pdf-img.", dir=config["outdir"])
+    try:
+        generated = []  # (file temporaneo, destinazione)
+        done = 0
+        for index, source in enumerate(files):
+            first, last = config["first"], config["last"]
+            count = pages[index]
+            if first is not None and count is not None:
+                if first > count:
+                    job.post("row", index, f"saltato: ha solo {count} pagin{'a' if count == 1 else 'e'}")
+                    continue
+                last = min(last, count)
+            job.post("row", index, "in corso…")
+            base = os.path.splitext(os.path.basename(source))[0]
+            prefix = os.path.join(workdir, f"{index}-page")
+            command = ["pdftoppm", "-progress", "-r", str(config["dpi"]), *options]
+            if first is not None:
+                command += ["-f", str(first), "-l", str(last)]
+
+            def on_line(line: str, index: int = index) -> None:
+                parts = line.split(" ", 2)
+                if len(parts) == 3 and parts[0].isdigit() and parts[1].isdigit():
+                    job.post("page", index, done + int(parts[0]) - (first or 1) + 1)
+
+            try:
+                job.run([*command, source, prefix], on_line)
+            except RuntimeError as exc:
+                job.post("row", index, "errore")
+                raise RuntimeError(f"Conversione non riuscita per {names[index]}:\n\n{exc}") from exc
+            produced = sorted(name for name in os.listdir(workdir) if name.startswith(f"{index}-page-"))
+            for name in produced:
+                suffix = name[len(f"{index}-page"):]
+                generated.append((os.path.join(workdir, name), os.path.join(config["outdir"], base + suffix)))
+            done += len(produced)
+            job.post("row", index, f"{len(produced)} immagini")
+
+        # Pubblica le immagini solo se nessuna destinazione è già occupata.
+        destinations = [destination for _source, destination in generated]
+        if len(set(destinations)) != len(destinations):
+            raise RuntimeError("Due PDF selezionati hanno lo stesso nome: le immagini andrebbero a sovrascriversi.")
+        existing = [destination for destination in destinations if os.path.lexists(destination)]
+        if existing:
+            more = f"\n(e altri {len(existing) - 1})" if len(existing) > 1 else ""
+            raise RuntimeError(f"Il file esiste già e non verrà sovrascritto:\n{existing[0]}{more}\n\n"
+                               "Nessuna immagine è stata salvata.")
+        job.check()
+        for temporary, destination in generated:
+            publish(temporary, destination)
+        job.post("finished", len(generated))
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
+def total_pages(config: dict) -> int:
+    total = 0
+    for count in pages:
+        count = count or 1
+        if config["first"] is None:
+            total += count
+        elif config["first"] <= count:
+            total += min(config["last"], count) - config["first"] + 1
+    return max(total, 1)
+
+
+saved = 0
+
+
+def on_message(kind: str, *payload) -> None:
+    global saved
+    if kind == "row":
+        index, text = payload
+        tree.set(str(index), "result", text)
+        tree.see(str(index))
+        if text == "in corso…":
+            status_var.set(f"Conversione di {names[index]}…")
+    elif kind == "page":
+        progress["value"] = payload[1]
+    elif kind == "finished":
+        saved = payload[0]
+
+
+def on_done(exc: BaseException | None) -> None:
+    global finished
+    finished = True
+    root.configure(cursor="")
+    close_button.configure(text="Chiudi")
+    if isinstance(exc, Cancelled):
+        for item in tree.get_children():
+            if tree.set(item, "result") == "in corso…":
+                tree.set(item, "result", "interrotto")
+        status_var.set("Interrotto: nessuna immagine è stata salvata.")
+    elif exc is not None:
+        status_var.set("Conversione non riuscita: nessuna immagine è stata salvata.")
+        messagebox.showerror(TITLE, str(exc), parent=root)
+    else:
+        progress["value"] = progress["maximum"]
+        status_var.set(f"Completato: {saved} immagini salvate in {outdir_var.get()}")
+        open_button.pack(side="right", padx=(0, 8))
+
+
+def start(*_args) -> None:
+    global worker
+    config, _message = settings()
+    if config is None or (worker and worker.running()) or finished:
+        return
+    for control in controls:
+        control.state(["disabled"])
+    start_button.configure(state="disabled")
+    close_button.configure(text="Interrompi")
+    root.configure(cursor="watch")
+    progress.configure(maximum=total_pages(config), value=0)
+    worker = Worker(root, on_message, on_done)
+    worker.start(convert, config)
+
+
+def browse() -> None:
+    initial = outdir_var.get() if os.path.isdir(outdir_var.get()) else os.path.dirname(files[0])
+    chosen = choose_directory(root, initial)
+    if chosen:
+        outdir_var.set(chosen)
+
+
+def open_folder() -> None:
+    subprocess.Popen(["xdg-open", outdir_var.get()], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def close(*_args) -> None:
+    if worker and worker.running():
+        worker.cancel()
+        return
+    root.destroy()
+
+
+def on_window_close() -> None:
+    if worker and worker.running():
+        worker.cancel()
+    root.destroy()
+
+
+start_button.configure(command=start)
+close_button.configure(command=close)
+browse_button.configure(command=browse)
+open_button.configure(command=open_folder)
+root.protocol("WM_DELETE_WINDOW", on_window_close)
+root.bind("<Return>", start)
+root.bind("<Escape>", close)
+for variable in (format_var, dpi_var, range_var, first_var, last_var, outdir_var):
+    variable.trace_add("write", update_state)
+quality_var.trace_add("write", update_state)
+update_state()
+start_button.focus_set()
+root.mainloop()

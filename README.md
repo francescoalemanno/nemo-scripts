@@ -3,10 +3,10 @@
 Questa cartella contiene azioni per il menu contestuale di Nemo. Ogni azione compare solo quando la selezione è adatta (per esempio **PDF join** solo con almeno due PDF selezionati):
 
 - **PDF join** — unisce almeno due PDF selezionati in un unico documento. Una finestra mostra l'elenco dei PDF: si riordinano trascinando le righe (oppure con Alt+↑/↓) e si sceglie il nome del file, che viene creato nella cartella del primo PDF selezionato.
-- **PDF 2 JPEG** — converte tutte le pagine di uno o più PDF in JPEG a 150 dpi. Chiede una cartella di destinazione.
+- **PDF 2 IMG** — converte le pagine di uno o più PDF in immagini. Una finestra permette di scegliere formato (JPEG o PNG), risoluzione in dpi, qualità JPEG, intervallo di pagine e cartella di destinazione (predefinita: quella del primo PDF). Le immagini si chiamano `nome-<pagina>.jpg` e vengono salvate solo se nessuna esiste già; la conversione si può interrompere.
 - **IMG 2 PDF** — crea un PDF multipagina dalle immagini selezionate (JPEG, PNG, GIF, BMP, TIFF e WebP). La stessa finestra di **PDF join** mostra le miniature: si riordinano le pagine trascinando le righe (oppure con Alt+↑/↓) e si sceglie il nome del PDF, che viene creato nella cartella della prima immagine selezionata. L'orientamento EXIF delle foto viene rispettato.
-- **PDF reduce** — comprime uno o più PDF con Ghostscript verso una dimensione massima in KB (per ciascun PDF). Chiede il limite e salva automaticamente ogni risultato accanto al rispettivo originale come `nome-ridotto.pdf`. Prova progressivamente risoluzioni e qualità inferiori. Se il contenuto non può essere compresso abbastanza, salva il risultato più piccolo ottenuto e segnala che il limite non è stato raggiunto.
-- **Bulk rename** — rinomina i file selezionati mantenendo l’estensione e usando il pattern `{stringa}{progressivo}.{estensione}`. Un unico dialog Python mostra l’anteprima aggiornata mentre si digita; il pulsante di rinomina conferma l’operazione. La numerazione parte da 1 e non vengono sovrascritti elementi già esistenti.
+- **PDF reduce** — comprime uno o più PDF con Ghostscript. Nella finestra si sceglie tra una **dimensione massima** in KB per ciascun PDF (cerca la risoluzione e la qualità JPEG più alte che rientrano nel limite) e le **impostazioni manuali** (risoluzione delle immagini e qualità JPEG); in entrambi i casi si può convertire in scala di grigi e scegliere il suffisso del nome (predefinito `nome-ridotto.pdf`, accanto all'originale). La tabella mostra per ogni file la dimensione ottenuta. Se il limite non si può raggiungere viene salvato il risultato più piccolo, segnalandolo; se la compressione non rende il file più piccolo dell'originale, non viene creato nulla.
+- **Bulk rename** — rinomina i file selezionati mantenendo l’estensione e usando il pattern `{stringa}{progressivo}.{estensione}` (se la stringa è vuota, solo `{progressivo}.{estensione}`). Un unico dialog Python mostra l’anteprima aggiornata mentre si digita; il pulsante di rinomina conferma l’operazione. La numerazione parte da 1 e non vengono sovrascritti elementi già esistenti.
 - **Apri Ghostty qui** — apre Ghostty nella cartella corrente dal menu sullo sfondo; **Apri Ghostty in questa cartella** apre la cartella selezionata dal menu contestuale della cartella.
 
 I file di destinazione già presenti non vengono mai sovrascritti.
@@ -29,7 +29,7 @@ Ordine e sottomenu delle azioni si possono personalizzare con `nemo-action-layou
 - `actions/` — file `.nemo_action` (nome, icona, tipi di file e selezione richiesti)
 - `bin/` — i programmi avviati dalle azioni; ricevono i file selezionati come argomenti, quindi si possono anche usare da terminale (per esempio `bin/pdf-join a.pdf b.pdf`)
   - `merge_dialog.py` — la finestra con lista riordinabile condivisa da **PDF join** e **IMG 2 PDF**
-  - `lib.sh` — funzioni comuni agli script bash (dialoghi zenity, controlli sulla selezione)
+  - `nemo_common.py` — funzioni comuni: lavoro in background interrompibile, salvataggio senza sovrascrivere, selettore di cartelle
 
 ## Disinstallazione
 
@@ -42,11 +42,11 @@ La disinstallazione rimuove solo i collegamenti creati da questo installer (che 
 
 ## Dipendenze
 
-- `zenity` per le finestre di dialogo
-- `poppler-utils` (`pdfunite` e `pdftoppm`)
+- `zenity` (facoltativo) per il selettore di cartelle di **PDF 2 IMG**
+- `poppler-utils` (`pdfunite`, `pdftoppm` e `pdfinfo`)
 - `ghostscript` (`gs`)
 - `python3` con Pillow (`python3-pil` e `python3-pil.imagetk` sui sistemi Debian/Ubuntu)
-- `python3-tk` per le finestre di **PDF join**, **IMG 2 PDF** e **Bulk rename** (sui sistemi Debian/Ubuntu)
+- `python3-tk` per le finestre di tutte le azioni (sui sistemi Debian/Ubuntu)
 
 Su Debian/Ubuntu, se necessario:
 

@@ -1,0 +1,7 @@
+[Nemo Action]
+Name=PDF 2 IMG
+Comment=Converte le pagine dei PDF selezionati in immagini JPEG o PNG
+Exec=<nemo-scripts/pdf-2-img %F>
+Selection=notnone
+Extensions=pdf;
+Icon-Name=image-x-generic

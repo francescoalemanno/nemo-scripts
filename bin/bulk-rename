@@ -91,7 +91,7 @@ main.grid(row=0, column=0, sticky="nsew")
 main.columnconfigure(0, weight=1)
 main.rowconfigure(2, weight=1)
 
-ttk.Label(main, text="Stringa iniziale").grid(row=0, column=0, sticky="w")
+ttk.Label(main, text="Stringa iniziale (se vuota, solo numeri)").grid(row=0, column=0, sticky="w")
 prefix_var = tk.StringVar()
 entry = ttk.Entry(main, textvariable=prefix_var)
 entry.grid(row=1, column=0, sticky="ew", pady=(4, 12))
@@ -143,8 +143,8 @@ def update_preview(*_args) -> None:
         status_var.set(f"Selezione non valida: non è un file regolare — {display_path(invalid[0])}")
         rename_button.configure(state="disabled")
         return
-    if not prefix or "/" in prefix or "\n" in prefix or "\r" in prefix:
-        status_var.set("Inserisci una stringa non vuota, senza '/' o ritorni a capo.")
+    if "/" in prefix or "\n" in prefix or "\r" in prefix:
+        status_var.set("La stringa non può contenere '/' o ritorni a capo.")
         rename_button.configure(state="disabled")
         return
 

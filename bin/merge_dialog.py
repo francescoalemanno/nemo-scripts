@@ -2,34 +2,15 @@
 
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 from collections.abc import Callable
 
-try:
-    import tkinter as tk
-    from tkinter import messagebox, ttk
-except ImportError:
-    subprocess.run(["zenity", "--error", "--title=Nemo",
-                    "--text=Serve il modulo tkinter di Python 3 (python3-tk)."])
-    sys.exit(1)
+from nemo_common import publish
+import tkinter as tk
+from tkinter import messagebox, ttk
 
 THUMBNAIL_SIZE = 56
-
-
-def publish(result: str, output: str) -> None:
-    """Sposta result in output senza mai sovrascrivere un file esistente."""
-    try:
-        # link() fallisce se la destinazione esiste.
-        os.link(result, output)
-    except FileExistsError:
-        raise
-    except OSError:
-        # File system senza hard link (es. FAT/exFAT).
-        if os.path.lexists(output):
-            raise FileExistsError(output)
-        os.rename(result, output)
 
 
 def run(*, title: str, files: list[str], list_label: str, default_name: str,

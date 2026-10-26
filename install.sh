@@ -40,7 +40,7 @@ fi
 
 mkdir -p -- "$ACTION_DEST"
 for file in "$ROOT"/bin/*; do
-    [[ $file == */lib.sh || $file == *.py ]] || chmod +x -- "$file"
+    [[ $file == *.py ]] || chmod +x -- "$file"
 done
 ln -sfn -- "$ROOT/bin" "$HELPER_LINK"
 

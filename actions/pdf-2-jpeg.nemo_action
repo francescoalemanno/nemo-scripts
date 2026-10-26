@@ -1,7 +1,0 @@
-[Nemo Action]
-Name=PDF 2 JPEG
-Comment=Converte tutte le pagine dei PDF selezionati in JPEG a 150 dpi
-Exec=<nemo-scripts/pdf-2-jpeg %F>
-Selection=notnone
-Extensions=pdf;
-Icon-Name=image-x-generic
