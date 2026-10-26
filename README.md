@@ -13,12 +13,15 @@ I file di destinazione già presenti non vengono mai sovrascritti.
 
 ## Installazione
 
-Da terminale:
+Il progetto è su GitHub: <https://github.com/francescoalemanno/nemo-scripts>. Da terminale:
 
 ```bash
+git clone https://github.com/francescoalemanno/nemo-scripts.git ~/nemo-scripts
 cd ~/nemo-scripts
 ./install.sh
 ```
+
+La cartella clonata va lasciata al suo posto, perché l'installer crea collegamenti che puntano ai suoi file (si può clonare anche altrove, purché si avvii `./install.sh` da lì).
 
 Le azioni (`actions/*.nemo_action`) vengono collegate in `~/.local/share/nemo/actions`, insieme al collegamento `nemo-scripts` → `bin/`: le azioni avviano i programmi con `Exec=<nemo-scripts/…>`, che Nemo risolve rispetto alla propria cartella delle azioni. L'installer rimuove anche i collegamenti in `~/.local/share/nemo/scripts` creati dalle versioni precedenti, quando le funzioni erano script. Se le azioni non compaiono subito, riavvia Nemo con `nemo -q`.
 
@@ -31,6 +34,16 @@ Ordine e sottomenu delle azioni si possono personalizzare con `nemo-action-layou
   - `merge_dialog.py` — la finestra con lista riordinabile condivisa da **PDF join** e **IMG 2 PDF**
   - `nemo_common.py` — funzioni comuni: lavoro in background interrompibile, salvataggio senza sovrascrivere, selettore di cartelle
 
+## Aggiornamento
+
+```bash
+cd ~/nemo-scripts
+git pull
+./install.sh
+```
+
+Rieseguire l'installer collega le azioni nuove e rimuove i collegamenti a quelle eliminate.
+
 ## Disinstallazione
 
 ```bash
@@ -38,7 +51,7 @@ cd ~/nemo-scripts
 ./uninstall.sh
 ```
 
-La disinstallazione rimuove solo i collegamenti creati da questo installer (che puntano a questa cartella); i file sorgenti in `~/nemo-scripts` restano al loro posto.
+La disinstallazione rimuove solo i collegamenti creati da questo installer (che puntano a questa cartella); i file sorgenti nella cartella clonata restano al loro posto (si possono poi cancellare a mano).
 
 ## Dipendenze
 
